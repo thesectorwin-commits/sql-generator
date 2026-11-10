@@ -1,0 +1,8 @@
+{
+  "functions": {
+    "api/generate.js": {
+      "maxDuration": 60,
+      "includeFiles": "node_modules/@electric-sql/pglite/dist/**"
+    }
+  }
+}

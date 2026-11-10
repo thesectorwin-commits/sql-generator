@@ -1,0 +1,9 @@
+{
+  "name": "sql-verstak",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Превращает вопрос на обычном языке в SQL-запрос PostgreSQL по описанию ваших таблиц.",
+  "dependencies": {
+    "@electric-sql/pglite": "^0.5.8"
+  }
+}

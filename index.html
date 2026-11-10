@@ -1,0 +1,341 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Генератор SQL-запросов</title>
+<!-- Fonts and the xlsx library are served from this site (no Google/Cloudflare requests: blocked in parts of Russia). -->
+<link rel="stylesheet" href="/fonts/fonts.css">
+<script src="/vendor/xlsx.full.min.js"></script>
+<style>
+:root{
+  color-scheme:light dark;
+  --bg:#f4f6f4;
+  --surface:#ffffff;
+  --surface-2:#eef2f0;
+  --border:#d8ded9;
+  --border-strong:#b9c3bd;
+  --text:#141c19;
+  --text-dim:#54655d;
+  --text-faint:#8a988f;
+  --accent:#0f766e;
+  --accent-strong:#0b5c56;
+  --accent-soft:#e3f3f0;
+  --accent-contrast:#ffffff;
+  --good:#187a44;
+  --bad:#b3261e;
+  --bad-soft:#fbe7e5;
+  --code-bg:#101815;
+  --code-text:#e6f3ee;
+  --code-border:#26332d;
+  --kw:#5eead4;
+  --str:#f5b673;
+  --num:#93c5fd;
+  --com:#7c8f86;
+  --shadow:0 1px 2px rgba(20,28,25,.07),0 6px 18px rgba(20,28,25,.07);
+}
+@media (prefers-color-scheme: dark){
+  :root{
+    --bg:#0f1512;
+    --surface:#161e1a;
+    --surface-2:#1c2620;
+    --border:#2a352e;
+    --border-strong:#3a473e;
+    --text:#e7f0ea;
+    --text-dim:#a7b6ad;
+    --text-faint:#71827a;
+    --accent:#2dd4bf;
+    --accent-strong:#5eead4;
+    --accent-soft:#153531;
+    --accent-contrast:#0b1210;
+    --good:#4ade80;
+    --bad:#f87171;
+    --bad-soft:#341413;
+    --code-bg:#0a100d;
+    --code-text:#dff3ec;
+    --code-border:#223028;
+    --com:#5f7168;
+    --shadow:0 1px 2px rgba(0,0,0,.45),0 10px 26px rgba(0,0,0,.4);
+  }
+}
+
+*{box-sizing:border-box;}
+[hidden]{display:none!important;}
+body{
+  margin:0;
+  background:var(--bg);
+  color:var(--text);
+  font-family:"Public Sans",-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif;
+  font-size:14px;
+  line-height:1.5;
+}
+.mono{font-family:"IBM Plex Mono",ui-monospace,"SFMono-Regular",Menlo,Consolas,monospace;}
+
+.wrap{max-width:1180px;margin:0 auto;padding:28px 20px 64px;}
+
+header.top{
+  display:flex;justify-content:space-between;align-items:flex-end;flex-wrap:wrap;
+  gap:16px;margin-bottom:22px;padding-bottom:18px;border-bottom:1px solid var(--border);
+}
+header.top h1{font-size:26px;font-weight:700;margin:0;letter-spacing:-.01em;text-wrap:balance;}
+header.top p{margin:6px 0 0;color:var(--text-dim);font-size:14px;max-width:56ch;}
+header.top .dialect{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;color:var(--text-dim);
+  border:1px solid var(--border);border-radius:6px;padding:5px 10px;white-space:nowrap;
+}
+
+.banner{
+  display:flex;justify-content:space-between;align-items:center;gap:12px;
+  background:var(--accent-soft);border:1px solid var(--border);border-radius:8px;
+  padding:10px 14px;margin-bottom:20px;font-size:13px;color:var(--text);
+}
+.banner button{
+  background:none;border:none;color:var(--text-dim);font-size:13px;cursor:pointer;
+  text-decoration:underline;padding:0;
+}
+
+.layout{display:grid;grid-template-columns:380px 1fr;gap:22px;align-items:start;}
+.layout-main{display:flex;flex-direction:column;gap:22px;min-width:0;}
+@media (max-width:880px){.layout{grid-template-columns:1fr;}}
+
+section.panel{
+  background:var(--surface);border:1px solid var(--border);border-radius:10px;
+  box-shadow:var(--shadow);
+}
+.panel-head{
+  padding:14px 16px;border-bottom:1px solid var(--border);
+  display:flex;align-items:center;justify-content:space-between;gap:8px;
+}
+.panel-head h2{font-size:14px;margin:0;font-weight:600;}
+.panel-head .hint{font-size:12px;color:var(--text-faint);}
+.panel-body{padding:14px 16px;}
+.panel-body.flush-top{padding-top:0;}
+
+/* schema cards */
+.table-card{border-bottom:1px solid var(--border);}
+.table-card:last-child{border-bottom:none;}
+.table-card summary{
+  list-style:none;cursor:pointer;padding:12px 16px;display:flex;align-items:center;gap:10px;
+}
+.table-card summary::-webkit-details-marker{display:none;}
+.table-card summary .chevron{
+  color:var(--text-faint);font-size:11px;transition:transform .15s ease;flex:none;
+}
+.table-card[open] summary .chevron{transform:rotate(90deg);}
+.table-card summary .tname{
+  font-family:"IBM Plex Mono",monospace;font-size:13px;font-weight:600;flex:1;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.table-card summary .tname.empty{color:var(--text-faint);font-weight:400;}
+.table-card summary .colcount{
+  font-size:11px;color:var(--text-faint);font-family:"IBM Plex Mono",monospace;
+}
+.table-card .body{padding:0 16px 16px;}
+
+label.field{display:block;font-size:11px;color:var(--text-dim);margin:10px 0 4px;text-transform:uppercase;letter-spacing:.04em;}
+label.field.lead{font-size:14px;font-weight:600;color:var(--text);text-transform:none;letter-spacing:normal;margin:0 0 8px;}
+input[type="text"],textarea,select{
+  width:100%;background:var(--surface-2);border:1px solid var(--border);border-radius:6px;
+  color:var(--text);font-size:13px;padding:8px 10px;font-family:inherit;
+}
+input[type="text"]:focus,textarea:focus,select:focus{
+  outline:2px solid var(--accent);outline-offset:1px;border-color:var(--accent);
+}
+textarea{resize:vertical;}
+
+.cols-table{width:100%;border-collapse:collapse;margin-top:6px;}
+.cols-table th{
+  text-align:left;font-size:10px;text-transform:uppercase;letter-spacing:.04em;
+  color:var(--text-faint);font-weight:600;padding:0 6px 6px;
+}
+.cols-table td{padding:3px 6px 3px 0;vertical-align:top;}
+.cols-table td.name{width:30%;}
+.cols-table td.type{width:22%;}
+.cols-table td.desc{width:40%;}
+.cols-table td.rm{width:8%;text-align:right;}
+.cols-table input{font-size:12px;padding:6px 8px;}
+.cols-table input.name-input{font-family:"IBM Plex Mono",monospace;}
+
+.rm-btn{
+  background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:16px;line-height:1;
+  padding:4px 6px;border-radius:5px;flex:none;
+}
+.rm-btn:hover{color:var(--bad);background:var(--bad-soft);}
+.rm-btn.confirming{
+  font-size:11px;font-family:"Public Sans",sans-serif;font-weight:600;
+  color:var(--bad);background:var(--bad-soft);padding:4px 8px;
+}
+
+.add-col-btn{
+  margin-top:8px;background:none;border:1px dashed var(--border-strong);border-radius:6px;
+  color:var(--text-dim);font-size:12px;padding:6px 10px;cursor:pointer;width:100%;
+}
+.add-col-btn:hover{border-color:var(--accent);color:var(--accent-strong);}
+
+.cols-head-row{display:flex;align-items:center;justify-content:space-between;margin-top:10px;gap:8px;}
+.cols-head-row label.field{margin:0;}
+.mini-btn{
+  font-family:"Public Sans",sans-serif;font-size:11.5px;font-weight:600;flex:none;
+  border:1px solid var(--border);background:var(--surface-2);color:var(--text-dim);
+  border-radius:6px;padding:6px 9px;cursor:pointer;white-space:nowrap;
+}
+.mini-btn:hover{border-color:var(--accent);color:var(--accent-strong);}
+.import-status{font-size:11.5px;margin:4px 0 0;color:var(--text-faint);}
+.import-status.ok{color:var(--good);}
+.import-status.err{color:var(--bad);}
+
+/* query panel */
+.tables-select{display:flex;flex-wrap:wrap;gap:6px;margin:10px 0 14px;}
+.chip{
+  font-family:"IBM Plex Mono",monospace;font-size:12px;padding:5px 10px;border-radius:99px;
+  border:1px solid var(--border);color:var(--text-dim);cursor:pointer;user-select:none;
+  background:var(--surface-2);
+}
+.chip.on{background:var(--accent-soft);border-color:var(--accent);color:var(--accent-strong);}
+
+.q-row{display:flex;flex-direction:column;gap:12px;}
+.q-row textarea{min-height:130px;font-size:14px;}
+.q-actions{display:flex;gap:10px;align-items:center;}
+.btn{
+  font-family:"Public Sans",sans-serif;font-weight:600;font-size:13px;border:none;border-radius:7px;
+  padding:10px 16px;cursor:pointer;white-space:nowrap;
+}
+.btn-primary{background:var(--accent);color:var(--accent-contrast);}
+.btn-primary:hover{background:var(--accent-strong);}
+.btn-primary:disabled{opacity:.5;cursor:not-allowed;}
+.btn-ghost{background:none;border:1px solid var(--border);color:var(--text-dim);}
+.btn-ghost:hover{border-color:var(--border-strong);color:var(--text);}
+button:focus-visible{outline:2px solid var(--accent);outline-offset:2px;}
+
+.status-line{margin-top:12px;font-size:13px;color:var(--text-dim);min-height:18px;display:flex;align-items:center;gap:8px;}
+.status-line.err{color:var(--bad);}
+.dot{width:6px;height:6px;border-radius:50%;background:var(--accent);animation:pulse 1.1s ease-in-out infinite;}
+@keyframes pulse{0%,100%{opacity:.3;}50%{opacity:1;}}
+@media (prefers-reduced-motion: reduce){.dot{animation:none;}}
+
+.output{margin-top:14px;}
+.code-panel{
+  background:var(--code-bg);border:1px solid var(--code-border);border-radius:8px;overflow:hidden;
+}
+.code-panel .code-head{
+  display:flex;justify-content:space-between;align-items:center;padding:8px 12px;
+  border-bottom:1px solid var(--code-border);
+}
+.code-panel .code-head span{
+  font-family:"IBM Plex Mono",monospace;font-size:11px;color:var(--com);text-transform:uppercase;letter-spacing:.06em;
+}
+.copy-btn{
+  background:none;border:1px solid var(--code-border);color:var(--code-text);
+  font-size:11px;padding:4px 9px;border-radius:5px;cursor:pointer;font-family:"IBM Plex Mono",monospace;
+}
+.copy-btn{min-width:130px;text-align:center;}
+.copy-btn:hover{border-color:var(--accent);color:var(--accent-strong);}
+.copy-btn.done{background:var(--accent);border-color:var(--accent);color:var(--accent-contrast);}
+.copy-btn.fail{border-color:var(--bad);color:var(--bad);}
+pre.sql{
+  margin:0;padding:14px 16px;overflow-x:auto;font-size:13px;line-height:1.6;
+  font-family:"IBM Plex Mono",monospace;color:var(--code-text);white-space:pre;
+}
+.kw{color:var(--kw);font-weight:600;}
+.str{color:var(--str);}
+.num{color:var(--num);}
+.com{color:var(--com);font-style:italic;}
+
+.explain{margin-top:10px;font-size:13px;color:var(--text-dim);padding:0 2px;}
+
+.empty-out{
+  color:var(--text-faint);font-size:13px;padding:20px 4px;text-align:center;
+}
+
+/* history */
+.hist-item{
+  border-bottom:1px solid var(--border);padding:10px 16px;cursor:pointer;
+  display:flex;justify-content:space-between;gap:10px;align-items:flex-start;
+}
+.hist-item:last-child{border-bottom:none;}
+.hist-item:hover{background:var(--surface-2);}
+.hist-item .q{font-size:13px;color:var(--text);overflow:hidden;text-overflow:ellipsis;
+  display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;}
+.hist-item .meta{font-size:11px;color:var(--text-faint);font-family:"IBM Plex Mono",monospace;margin-top:3px;}
+.hist-item .del{background:none;border:none;color:var(--text-faint);cursor:pointer;font-size:14px;flex:none;}
+.hist-item .del:hover{color:var(--bad);}
+
+footer.note{margin-top:28px;font-size:12px;color:var(--text-faint);text-align:center;}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="top">
+    <div>
+      <h1>Генератор SQL-запросов</h1>
+      <p>Опишите свои таблицы один раз, дальше просто пишите вопрос на человеческом языке — и получайте готовый запрос.</p>
+    </div>
+    <div class="dialect">диалект: PostgreSQL</div>
+  </header>
+
+  <div id="banner" class="banner" hidden>
+    <span>Схема заполнена примером из трёх учебных таблиц — отредактируйте под свои, добавьте ещё таблицы кнопкой ниже.</span>
+    <button id="banner-close" type="button">Понятно, скрыть</button>
+  </div>
+
+  <div class="layout">
+    <section class="panel">
+      <div class="panel-head">
+        <h2>Схема таблиц</h2>
+        <span class="hint" id="tables-count-hint"></span>
+      </div>
+      <div id="schema-list"></div>
+      <div class="panel-body flush-top">
+        <button id="add-table-btn" type="button" class="add-col-btn">+ Добавить таблицу</button>
+      </div>
+    </section>
+
+    <div class="layout-main">
+      <section class="panel">
+        <div class="panel-head">
+          <h2>Выберите нужные таблицы</h2>
+          <span class="hint" id="tables-hint"></span>
+        </div>
+        <div class="panel-body">
+          <div id="tables-select" class="tables-select"></div>
+          <label class="field lead" for="question">Опишите, какие данные вам нужны</label>
+          <div class="q-row">
+            <textarea id="question" placeholder="Например: по каждому городу за последние 6 месяцев покажи выручку по месяцам, число покупателей и самый продаваемый товар, только города с выручкой больше 100 000 ₽"></textarea>
+            <div class="q-actions">
+              <button id="gen-btn" class="btn btn-primary" type="button">Сгенерировать SQL</button>
+              <button id="stop-btn" class="btn btn-ghost" type="button" hidden>Стоп</button>
+            </div>
+          </div>
+          <div id="status" class="status-line"></div>
+
+          <div class="output">
+            <div class="code-panel">
+              <div class="code-head">
+                <span>result.sql</span>
+                <button id="copy-btn" class="copy-btn" type="button" aria-live="polite" hidden>Скопировать</button>
+              </div>
+              <div id="code-wrap">
+                <div class="empty-out">Здесь появится сгенерированный SQL-запрос</div>
+              </div>
+            </div>
+            <div id="explain" class="explain"></div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="panel-head">
+          <h2>История запросов</h2>
+          <span class="hint">клик — открыть</span>
+        </div>
+        <div id="history-list"></div>
+      </section>
+    </div>
+  </div>
+
+  <footer class="note">© TESEMNIKOV 2026</footer>
+</div>
+
+<script src="app.js"></script>
+</body>
+</html>
